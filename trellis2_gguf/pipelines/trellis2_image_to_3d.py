@@ -186,6 +186,20 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             print(f"[Trellis2] Warning: Could not initialize {target_class_name}: {e}")
             return default_sampler
 
+    def GetSamplerName(self, sampler_name: Optional[str]) -> str:
+        """
+        Helper to normalize sampler names.
+        """
+        if sampler_name is None or sampler_name == "" or sampler_name == "default":
+            return "Euler"
+        name_map = {
+            "euler": "Euler",
+            "heun": "Heun",
+            "rk4": "RK4",
+            "rk5": "RK5",
+        }
+        return name_map.get(sampler_name.lower(), "Euler")
+
     def move_all_to_cpu(self):
         """Move all models in the pipeline to CPU."""
         print("[Trellis2] Offloading all models to CPU...")

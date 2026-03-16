@@ -38,6 +38,7 @@ import comfy.utils
 
 from .trellis2_gguf.pipelines import Trellis2ImageTo3DPipeline
 from .trellis2_gguf.representations import Mesh, MeshWithVoxel
+from .trellis2_gguf.modules.sparse import SparseTensor
 
 script_directory = os.path.dirname(os.path.abspath(__file__))
 comfy_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -132,11 +133,18 @@ class CUDAUtils:
         # Clear PyTorch CUDA cache
         torch.cuda.empty_cache()
 
+def seed_all(seed: int = 0):
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
 class ImageUtils:
     @staticmethod
     def pil_to_tensor(image):
         return torch.from_numpy(np.array(image).astype(np.float32) / 255.0)[None,]
-        
+
     @staticmethod
     def tensor_to_pil(image: torch.Tensor) -> Image.Image:
         """
@@ -3539,7 +3547,302 @@ class Trellis2_GGUFUnWrapTrimesh:
         mesh_copy.faces = out_faces.cpu().numpy()
         mesh_copy.visual.uv = out_uvs.cpu().numpy()
         
-        return (mesh_copy,)          
+        return (mesh_copy,)
+
+class Trellis2_GGUFImageCondGenerator:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pipeline": ("TRELLIS2PIPELINE",),
+                "image": ("IMAGE",),
+                "resolution": ("INT", {"default": 512, "min": 256, "max": 2048, "step": 256}),
+            },
+        }
+
+    RETURN_TYPES = ("CONDITIONING",)
+    RETURN_NAMES = ("conditioning",)
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper (GGUF)"
+
+    def process(self, pipeline, image, resolution):
+        images = ImageUtils.tensor_batch_to_pil_list(image)
+        cond = pipeline.get_cond(images, resolution)
+        return (cond,)
+
+class Trellis2_GGUFSparseGenerator:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pipeline": ("TRELLIS2PIPELINE",),
+                "conditioning": ("CONDITIONING",),
+                "seed": ("INT", {"default": 12345, "min": 0, "max": 0x7fffffff}),
+                "steps": ("INT", {"default": 12, "min": 1, "max": 100}),
+                "guidance_strength": ("FLOAT", {"default": 6.5, "min": 0.0, "max": 99.0, "step": 0.1}),
+                "guidance_rescale": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "rescale_t": ("FLOAT", {"default": 4.0, "min": 0.0, "max": 9.9, "step": 0.1}),
+                "resolution": ("INT", {"default": 32, "min": 32, "max": 128, "step": 4}),
+                "sampler": (["euler", "heun", "rk4", "rk5"], {"default": "euler"}),
+                "guidance_interval_start": ("FLOAT", {"default": 0.1, "min": 0.00, "max": 1.0, "step": 0.01}),
+                "guidance_interval_end": ("FLOAT", {"default": 1.0, "min": 0.00, "max": 1.0, "step": 0.01}),
+            },
+        }
+
+    RETURN_TYPES = ("COORDS",)
+    RETURN_NAMES = ("coords",)
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper (GGUF)"
+
+    def process(self, pipeline, conditioning, seed, steps, guidance_strength, guidance_rescale, rescale_t, resolution, sampler, guidance_interval_start, guidance_interval_end):
+        seed_all(seed)
+        pipeline.load_sparse_structure_model()
+        sampler_params = {
+            "steps": steps,
+            "guidance_strength": guidance_strength,
+            "guidance_rescale": guidance_rescale,
+            "rescale_t": rescale_t,
+            "guidance_interval": [guidance_interval_start, guidance_interval_end],
+        }
+        coords = pipeline.sample_sparse_structure(conditioning, resolution, sampler_params=sampler_params, sampler=sampler)
+        if not pipeline.keep_models_loaded:
+            pipeline.unload_sparse_structure_model()
+        return (coords,)
+
+class Trellis2_GGUFShapeGenerator:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pipeline": ("TRELLIS2PIPELINE",),
+                "conditioning": ("CONDITIONING",),
+                "coords": ("COORDS",),
+                "seed": ("INT", {"default": 12345, "min": 0, "max": 0x7fffffff}),
+                "steps": ("INT", {"default": 12, "min": 1, "max": 100}),
+                "guidance_strength": ("FLOAT", {"default": 6.5, "min": 0.0, "max": 99.0, "step": 0.1}),
+                "guidance_rescale": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "rescale_t": ("FLOAT", {"default": 4.0, "min": 0.0, "max": 9.9, "step": 0.1}),
+                "sampler": (["euler", "heun", "rk4", "rk5"], {"default": "euler"}),
+                "guidance_interval_start": ("FLOAT", {"default": 0.1, "min": 0.00, "max": 1.0, "step": 0.01}),
+                "guidance_interval_end": ("FLOAT", {"default": 1.0, "min": 0.00, "max": 1.0, "step": 0.01}),
+                "resolution": ("INT", {"default": 1024, "min": 512, "max": 4096, "step": 512}),
+            },
+        }
+
+    RETURN_TYPES = ("SHAPE_SLAT", "INT")
+    RETURN_NAMES = ("shape_slat", "resolution")
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper (GGUF)"
+
+    def process(self, pipeline, conditioning, coords, seed, steps, guidance_strength, guidance_rescale, rescale_t, sampler, guidance_interval_start, guidance_interval_end, resolution):
+        seed_all(seed)
+        model_key = f"shape_slat_flow_model_{resolution}"
+        if resolution == 512:
+             pipeline.load_shape_slat_flow_model_512()
+        else:
+             pipeline.load_shape_slat_flow_model_1024()
+             model_key = "shape_slat_flow_model_1024"
+             
+        flow_model = pipeline.models[model_key]
+        sampler_params = {
+            "steps": steps,
+            "guidance_strength": guidance_strength,
+            "guidance_rescale": guidance_rescale,
+            "rescale_t": rescale_t,
+            "guidance_interval": [guidance_interval_start, guidance_interval_end],
+        }
+        slat = pipeline.sample_shape_slat(conditioning, flow_model, coords, sampler_params=sampler_params, sampler=sampler)
+        if not pipeline.keep_models_loaded:
+             if resolution == 512: pipeline.unload_shape_slat_flow_model_512()
+             else: pipeline.unload_shape_slat_flow_model_1024()
+        return (slat, resolution)
+
+class Trellis2_GGUFShapeCascadeGenerator:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pipeline": ("TRELLIS2PIPELINE",),
+                "conditioning_lr": ("CONDITIONING",),
+                "conditioning_hr": ("CONDITIONING",),
+                "coords": ("COORDS",),
+                "seed": ("INT", {"default": 12345, "min": 0, "max": 0x7fffffff}),
+                "steps": ("INT", {"default": 12, "min": 1, "max": 100}),
+                "guidance_strength": ("FLOAT", {"default": 6.5, "min": 0.0, "max": 99.0, "step": 0.1}),
+                "guidance_rescale": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "rescale_t": ("FLOAT", {"default": 4.0, "min": 0.0, "max": 9.9, "step": 0.1}),
+                "sampler": (["euler", "heun", "rk4", "rk5"], {"default": "euler"}),
+                "guidance_interval_start": ("FLOAT", {"default": 0.1, "min": 0.00, "max": 1.0, "step": 0.01}),
+                "guidance_interval_end": ("FLOAT", {"default": 1.0, "min": 0.00, "max": 1.0, "step": 0.01}),
+                "lr_resolution": ("INT", {"default": 512}),
+                "hr_resolution": ("INT", {"default": 1024, "min": 1024, "max": 4096, "step": 512}),
+                "max_num_tokens": ("INT", {"default": 49152, "min": 0, "max": 999999}),
+            },
+        }
+
+    RETURN_TYPES = ("SHAPE_SLAT", "INT")
+    RETURN_NAMES = ("shape_slat", "resolution")
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper (GGUF)"
+
+    def process(self, pipeline, conditioning_lr, conditioning_hr, coords, seed, steps, guidance_strength, guidance_rescale, rescale_t, sampler, guidance_interval_start, guidance_interval_end, lr_resolution, hr_resolution, max_num_tokens):
+        seed_all(seed)
+        pipeline.load_shape_slat_flow_model_512()
+        pipeline.load_shape_slat_flow_model_1024()
+        sampler_params = {
+            "steps": steps,
+            "guidance_strength": guidance_strength,
+            "guidance_rescale": guidance_rescale,
+            "rescale_t": rescale_t,
+            "guidance_interval": [guidance_interval_start, guidance_interval_end],
+        }
+        slat, res = pipeline.sample_shape_slat_cascade(
+            conditioning_lr, conditioning_hr,
+            pipeline.models["shape_slat_flow_model_512"], pipeline.models["shape_slat_flow_model_1024"],
+            lr_resolution, hr_resolution, coords, sampler_params=sampler_params,
+            max_num_tokens=max_num_tokens, sampler=sampler
+        )
+        if not pipeline.keep_models_loaded:
+            pipeline.unload_shape_slat_flow_model_512()
+            pipeline.unload_shape_slat_flow_model_1024()
+        return (slat, res)
+
+class Trellis2_GGUFTextureSlatGenerator:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pipeline": ("TRELLIS2PIPELINE",),
+                "conditioning": ("CONDITIONING",),
+                "shape_slat": ("SHAPE_SLAT",),
+                "seed": ("INT", {"default": 12345, "min": 0, "max": 0x7fffffff}),
+                "steps": ("INT", {"default": 12, "min": 1, "max": 100}),
+                "guidance_strength": ("FLOAT", {"default": 6.5, "min": 0.0, "max": 99.0, "step": 0.1}),
+                "guidance_rescale": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "rescale_t": ("FLOAT", {"default": 4.0, "min": 0.0, "max": 9.9, "step": 0.1}),
+                "sampler": (["euler", "heun", "rk4", "rk5"], {"default": "euler"}),
+                "guidance_interval_start": ("FLOAT", {"default": 0.1, "min": 0.00, "max": 1.0, "step": 0.01}),
+                "guidance_interval_end": ("FLOAT", {"default": 1.0, "min": 0.00, "max": 1.0, "step": 0.01}),
+                "resolution": ("INT", {"default": 1024, "min": 512, "max": 1024, "step": 512}),
+            },
+        }
+
+    RETURN_TYPES = ("TEX_SLAT",)
+    RETURN_NAMES = ("tex_slat",)
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper (GGUF)"
+
+    def process(self, pipeline, conditioning, shape_slat, seed, steps, guidance_strength, guidance_rescale, rescale_t, sampler, guidance_interval_start, guidance_interval_end, resolution):
+        seed_all(seed)
+        model_key = f"tex_slat_flow_model_{resolution}"
+        if resolution == 512:
+             pipeline.load_tex_slat_flow_model_512()
+        else:
+             pipeline.load_tex_slat_flow_model_1024()
+             model_key = "tex_slat_flow_model_1024"
+
+        flow_model = pipeline.models[model_key]
+        sampler_params = {
+            "steps": steps,
+            "guidance_strength": guidance_strength,
+            "guidance_rescale": guidance_rescale,
+            "rescale_t": rescale_t,
+            "guidance_interval": [guidance_interval_start, guidance_interval_end],
+        }
+        slat = pipeline.sample_tex_slat(conditioning, flow_model, shape_slat, sampler_params=sampler_params, sampler=sampler)
+        if not pipeline.keep_models_loaded:
+             if resolution == 512: pipeline.unload_tex_slat_flow_model_512()
+             else: pipeline.unload_tex_slat_flow_model_1024()
+        return (slat,)
+
+class Trellis2_GGUFDecodeLatents:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pipeline": ("TRELLIS2PIPELINE",),
+                "shape_slat": ("SHAPE_SLAT",),
+                "resolution": ("INT", {"default": 1024, "min": 512, "max": 4096, "step": 512}),
+                "use_tiled_decoder": ("BOOLEAN", {"default": True}),
+            },
+            "optional": {
+                "tex_slat": ("TEX_SLAT",),
+            }
+        }
+
+    RETURN_TYPES = ("MESHWITHVOXEL",)
+    RETURN_NAMES = ("mesh",)
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper (GGUF)"
+
+    def process(self, pipeline, shape_slat, resolution, use_tiled_decoder, tex_slat=None):
+        mesh = pipeline.decode_latent(shape_slat, tex_slat, resolution, use_tiled=use_tiled_decoder)[0]
+        return (mesh,)
+
+class Trellis2_GGUFSimplifyMeshAdvanced:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "mesh": ("MESHWITHVOXEL",),
+                "target_face_num": ("INT", {"default": 1000000, "min": 1, "max": 30000000}),
+                "method": (["Cumesh", "Meshlib"], {"default": "Cumesh"}),
+                "verbose": ("BOOLEAN", {"default": True}),
+            },
+        }
+
+    RETURN_TYPES = ("MESHWITHVOXEL",)
+    RETURN_NAMES = ("mesh",)
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper (GGUF)"
+
+    def process(self, mesh, target_face_num, method, verbose):
+        mesh_copy = copy.deepcopy(mesh)
+        if method == "Cumesh":
+            cumesh = CuMesh.CuMesh()
+            cumesh.init(mesh_copy.vertices.cuda(), mesh_copy.faces.cuda())
+            cumesh.simplify(target_face_num, verbose=verbose)
+            v, f = cumesh.read()
+            mesh_copy.vertices = v.to(mesh_copy.device)
+            mesh_copy.faces = f.to(mesh_copy.device)
+            del cumesh
+        elif method == "Meshlib":
+            v, f = MeshUtils.simplify_with_meshlib(mesh_copy.vertices.cpu().numpy(), mesh_copy.faces.cpu().numpy(), target_face_num)
+            mesh_copy.vertices = torch.from_numpy(v).float().to(mesh_copy.device)
+            mesh_copy.faces = torch.from_numpy(f).int().to(mesh_copy.device)
+        return (mesh_copy,)
+
+class Trellis2_GGUFSimplifyTrimeshAdvanced:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "trimesh": ("TRIMESH",),
+                "target_face_num": ("INT", {"default": 100000, "min": 100, "max": 10000000}),
+                "method": (["Trimesh", "Meshlib", "Cumesh"], {"default": "Trimesh"}),
+            },
+        }
+
+    RETURN_TYPES = ("TRIMESH",)
+    RETURN_NAMES = ("trimesh",)
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper (GGUF)"
+
+    def process(self, trimesh, target_face_num, method):
+        new_mesh = trimesh.copy()
+        if method == "Trimesh":
+            new_mesh = new_mesh.simplify_quadric_decimation(target_face_num)
+        elif method == "Meshlib":
+            v, f = MeshUtils.simplify_with_meshlib(new_mesh.vertices, new_mesh.faces, target_face_num)
+            new_mesh = Trimesh.Trimesh(vertices=v, faces=f, process=False)
+        elif method == "Cumesh":
+            cumesh = CuMesh.CuMesh()
+            cumesh.init(torch.from_numpy(new_mesh.vertices).float().cuda(), torch.from_numpy(new_mesh.faces).int().cuda())
+            cumesh.simplify(target_face_num, verbose=True)
+            v, f = cumesh.read()
+            new_mesh = Trimesh.Trimesh(vertices=v.cpu().numpy(), faces=f.cpu().numpy(), process=False)
+            del cumesh
+        return (new_mesh,)
 
 NODE_CLASS_MAPPINGS = {
     "Trellis2LoadModel_GGUF": Trellis2_GGUFLoadModel,
@@ -3579,6 +3882,14 @@ NODE_CLASS_MAPPINGS = {
     "Trellis2UnWrapTrimesh_GGUF": Trellis2_GGUFUnWrapTrimesh,
     "Trellis2MeshWithVoxelCascadeGenerator_GGUF": Trellis2_GGUFMeshWithVoxelCascadeGenerator,
     "Trellis2LoadModel_SDNQ": Trellis2_SDNQLoadModel,
+    "Trellis2ImageCondGenerator_GGUF": Trellis2_GGUFImageCondGenerator,
+    "Trellis2SparseGenerator_GGUF": Trellis2_GGUFSparseGenerator,
+    "Trellis2ShapeGenerator_GGUF": Trellis2_GGUFShapeGenerator,
+    "Trellis2ShapeCascadeGenerator_GGUF": Trellis2_GGUFShapeCascadeGenerator,
+    "Trellis2TextureSlatGenerator_GGUF": Trellis2_GGUFTextureSlatGenerator,
+    "Trellis2DecodeLatents_GGUF": Trellis2_GGUFDecodeLatents,
+    "Trellis2SimplifyMeshAdvanced_GGUF": Trellis2_GGUFSimplifyMeshAdvanced,
+    "Trellis2SimplifyTrimeshAdvanced_GGUF": Trellis2_GGUFSimplifyTrimeshAdvanced,
     }
     
 
@@ -3620,4 +3931,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Trellis2UnWrapTrimesh_GGUF": "Trellis2 - UnWrap Trimesh (GGUF)",
     "Trellis2MeshWithVoxelCascadeGenerator_GGUF": "Trellis2 - Mesh With Voxel Cascade Generator (GGUF)",
     "Trellis2LoadModel_SDNQ": "Trellis2 - LoadModel (SDNQ)",
+    "Trellis2ImageCondGenerator_GGUF": "Trellis2 - Image Cond Generator (GGUF)",
+    "Trellis2SparseGenerator_GGUF": "Trellis2 - Sparse Generator (GGUF)",
+    "Trellis2ShapeGenerator_GGUF": "Trellis2 - Shape Generator (GGUF)",
+    "Trellis2ShapeCascadeGenerator_GGUF": "Trellis2 - Shape Cascade Generator (GGUF)",
+    "Trellis2TextureSlatGenerator_GGUF": "Trellis2 - Texture Slat Generator (GGUF)",
+    "Trellis2DecodeLatents_GGUF": "Trellis2 - Decode Latents (GGUF)",
+    "Trellis2SimplifyMeshAdvanced_GGUF": "Trellis2 - Simplify Mesh Advanced (GGUF)",
+    "Trellis2SimplifyTrimeshAdvanced_GGUF": "Trellis2 - Simplify Trimesh Advanced (GGUF)",
     }

@@ -55,9 +55,9 @@ class SLatVisMixin:
         return reps
 
     @torch.no_grad()
-    def visualize_sample(self, x_0: Union[SparseTensor, dict]):
-        x_0 = x_0 if isinstance(x_0, SparseTensor) else x_0['x_0']
-        reps = self.decode_latent(x_0.cuda())
+    def visualize_sample(self, x: Union[SparseTensor, dict]):
+        x = x if hasattr(x, 'coords') else x['x']
+        reps = self.decode_latent(x.cuda())
         
         # Build camera
         yaws = [0, np.pi / 2, np.pi, 3 * np.pi / 2]
@@ -191,8 +191,8 @@ class SLat(SLatVisMixin, StandardDatasetBase):
             for k in keys:
                 if isinstance(sub_batch[0][k], torch.Tensor):
                     pack[k] = torch.stack([b[k] for b in sub_batch])
-                elif isinstance(sub_batch[0][k], list):
-                    pack[k] = sum([b[k] for b in sub_batch], [])
+                elif hasattr(sub_batch[0][k], 'coords'):
+                    pack[k] = sparse_cat([b[k] for b in sub_batch], dim=0)
                 else:
                     pack[k] = [b[k] for b in sub_batch]
                     

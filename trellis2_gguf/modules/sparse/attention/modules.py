@@ -17,7 +17,7 @@ class SparseMultiHeadRMSNorm(nn.Module):
     def forward(self, x: Union[VarLenTensor, torch.Tensor]) -> Union[VarLenTensor, torch.Tensor]:
         x_type = x.dtype
         x = x.float()
-        if isinstance(x, VarLenTensor):
+        if hasattr(x, 'feats'):
             x = x.replace(F.normalize(x.feats, dim=-1) * self.gamma * self.scale)
         else:
             x = F.normalize(x, dim=-1) * self.gamma * self.scale
@@ -76,29 +76,26 @@ class SparseMultiHeadAttention(nn.Module):
 
     @staticmethod
     def _linear(module: nn.Linear, x: Union[VarLenTensor, torch.Tensor]) -> Union[VarLenTensor, torch.Tensor]:
-        if isinstance(x, VarLenTensor):
+        if hasattr(x, 'feats'):
             return x.replace(module(x.feats))
         else:
             return module(x)
 
     @staticmethod
     def _reshape_chs(x: Union[VarLenTensor, torch.Tensor], shape: Tuple[int, ...]) -> Union[VarLenTensor, torch.Tensor]:
-        if isinstance(x, VarLenTensor):
-            return x.reshape(*shape)
-        elif hasattr(x, 'feats'):
-            # SparseTensor: reshape prepends N automatically, pass dims directly.
+        if hasattr(x, 'feats'):
             return x.reshape(*shape)
         else:
             return x.reshape(*x.shape[:2], *shape)
 
     def _fused_pre(self, x: Union[VarLenTensor, torch.Tensor], num_fused: int) -> Union[VarLenTensor, torch.Tensor]:
-        if isinstance(x, VarLenTensor):
+        if hasattr(x, 'feats') and not hasattr(x, 'coords'):
+            # VarLenTensor
             x_feats = x.feats.unsqueeze(0)
             x_feats = x_feats.reshape(*x_feats.shape[:2], num_fused, self.num_heads, -1)
             return x.replace(x_feats.squeeze(0))
         elif hasattr(x, 'feats'):
-            # SparseTensor (detected by .feats attribute to avoid dual-import isinstance failures).
-            # SparseTensor.reshape(a, b, c) → feats.reshape(N, a, b, c), so pass dims directly.
+            # SparseTensor
             return x.reshape(num_fused, self.num_heads, -1)
         else:
             return x.reshape(*x.shape[:2], num_fused, self.num_heads, -1)

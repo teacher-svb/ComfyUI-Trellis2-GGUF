@@ -252,7 +252,7 @@ class SLatPbr(SLatPbrVisMixin, StandardDatasetBase):
             for k in keys:
                 if isinstance(sub_batch[0][k], torch.Tensor):
                     pack[k] = torch.stack([b[k] for b in sub_batch])
-                elif isinstance(sub_batch[0][k], SparseTensor):
+                elif hasattr(sub_batch[0][k], 'coords'):
                     pack[k] = sparse_cat([b[k] for b in sub_batch], dim=0)
                 elif isinstance(sub_batch[0][k], list):
                     pack[k] = sum([b[k] for b in sub_batch], [])

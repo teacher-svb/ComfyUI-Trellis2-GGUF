@@ -93,7 +93,7 @@ def sparse_scaled_dot_product_attention(*args, **kwargs):
 
     if num_all_args == 1:
         qkv = args[0] if len(args) > 0 else kwargs['qkv']
-        assert isinstance(qkv, VarLenTensor), f"qkv must be a VarLenTensor, got {type(qkv)}"
+        assert hasattr(qkv, 'feats'), f"qkv must be a VarLenTensor, got {type(qkv)}"
         assert len(qkv.shape) == 4 and qkv.shape[1] == 3, f"Invalid shape for qkv, got {qkv.shape}, expected [N, *, 3, H, C]"
         device = qkv.device
 
@@ -105,13 +105,13 @@ def sparse_scaled_dot_product_attention(*args, **kwargs):
     elif num_all_args == 2:
         q = args[0] if len(args) > 0 else kwargs['q']
         kv = args[1] if len(args) > 1 else kwargs['kv']
-        assert isinstance(q, VarLenTensor) and isinstance(kv, (VarLenTensor, torch.Tensor)) or \
-               isinstance(q, torch.Tensor) and isinstance(kv, VarLenTensor), \
+        assert hasattr(q, 'feats') and (hasattr(kv, 'feats') or isinstance(kv, torch.Tensor)) or \
+               isinstance(q, torch.Tensor) and hasattr(kv, 'feats'), \
                f"Invalid types, got {type(q)} and {type(kv)}"
         assert q.shape[0] == kv.shape[0], f"Batch size mismatch, got {q.shape[0]} and {kv.shape[0]}"
         device = q.device
 
-        if isinstance(q, VarLenTensor):
+        if hasattr(q, 'feats'):
             assert len(q.shape) == 3, f"Invalid shape for q, got {q.shape}, expected [N, *, H, C]"
             s = q
             q_seqlen = [q.layout[i].stop - q.layout[i].start for i in range(q.shape[0])]
@@ -123,7 +123,7 @@ def sparse_scaled_dot_product_attention(*args, **kwargs):
             q_seqlen = [L] * N
             q = q.reshape(N * L, H, C)   # [T_Q, H, C]
 
-        if isinstance(kv, VarLenTensor):
+        if hasattr(kv, 'feats'):
             assert len(kv.shape) == 4 and kv.shape[1] == 2, f"Invalid shape for kv, got {kv.shape}, expected [N, *, 2, H, C]"
             kv_seqlen = [kv.layout[i].stop - kv.layout[i].start for i in range(kv.shape[0])]
             kv = kv.feats     # [T_KV, 2, H, C]
@@ -137,13 +137,13 @@ def sparse_scaled_dot_product_attention(*args, **kwargs):
         q = args[0] if len(args) > 0 else kwargs['q']
         k = args[1] if len(args) > 1 else kwargs['k']
         v = args[2] if len(args) > 2 else kwargs['v']
-        assert isinstance(q, VarLenTensor) and isinstance(k, (VarLenTensor, torch.Tensor)) and type(k) == type(v) or \
-               isinstance(q, torch.Tensor) and isinstance(k, VarLenTensor) and isinstance(v, VarLenTensor), \
+        assert hasattr(q, 'feats') and (hasattr(k, 'feats') or isinstance(k, torch.Tensor)) and type(k) == type(v) or \
+               isinstance(q, torch.Tensor) and hasattr(k, 'feats') and hasattr(v, 'feats'), \
                f"Invalid types, got {type(q)}, {type(k)}, and {type(v)}"
         assert q.shape[0] == k.shape[0] == v.shape[0], f"Batch size mismatch, got {q.shape[0]}, {k.shape[0]}, and {v.shape[0]}"
         device = q.device
 
-        if isinstance(q, VarLenTensor):
+        if hasattr(q, 'feats'):
             assert len(q.shape) == 3, f"Invalid shape for q, got {q.shape}, expected [N, *, H, Ci]"
             s = q
             q_seqlen = [q.layout[i].stop - q.layout[i].start for i in range(q.shape[0])]
@@ -155,7 +155,7 @@ def sparse_scaled_dot_product_attention(*args, **kwargs):
             q_seqlen = [L] * N
             q = q.reshape(N * L, H, CI)  # [T_Q, H, Ci]
 
-        if isinstance(k, VarLenTensor):
+        if hasattr(k, 'feats'):
             assert len(k.shape) == 3, f"Invalid shape for k, got {k.shape}, expected [N, *, H, Ci]"
             assert len(v.shape) == 3, f"Invalid shape for v, got {v.shape}, expected [N, *, H, Co]"
             kv_seqlen = [k.layout[i].stop - k.layout[i].start for i in range(k.shape[0])]

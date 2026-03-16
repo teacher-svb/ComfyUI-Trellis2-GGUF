@@ -122,39 +122,60 @@ def show_recommendations():
     print("pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124")
     print("="*50 + "\n")
 
-def install_flash_attn(pip_base, env, dry_run=False):
+def find_wheel_url(lib_name, env):
     import urllib.request
     import re
     
-    print("\n--- Installing flash-attn ---")
-    index_url = "https://pozzettiandrea.github.io/cuda-wheels/flash-attn/"
+    index_url = f"https://pozzettiandrea.github.io/cuda-wheels/{lib_name}/"
     
     try:
         req = urllib.request.Request(index_url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as response:
             html = response.read().decode('utf-8')
     except Exception as e:
-        print(f"  Warning: Could not access flash-attn wheel index: {e}")
-        return False
+        print(f"  Warning: Could not access {lib_name} wheel index: {e}")
+        return None
 
     cuda = env['cuda']
     torch_tag = env['torch']
     python_tag = env['python']
-    platform_tag = "linux_x86_64" if platform.system() != "Windows" else "win_amd64"
     
-    # Match torch version with optional dot (e.g., torch25 or torch2.5)
-    # torch_tag is like 'torch25'
+    # torch_tag is like 'torch210'
     torch_base = torch_tag[:5] # 'torch'
-    torch_ver = torch_tag[5:] # '25'
-    torch_pattern = rf"{torch_base}{torch_ver[0]}\.?{torch_ver[1]}" # torch2\.?5
+    torch_ver = torch_tag[5:] # '210'
     
-    # Regex to find the GitHub release URL for the matching wheel
-    pattern = rf'https://github\.com/[^"\s]+flash_attn-[^"\s]+\+{cuda}{torch_pattern}-{python_tag}-{python_tag}-{platform_tag}\.whl'
+    v_major = torch_ver[0]
+    v_minor = torch_ver[1:]
+    
+    # 1. Handle encoding: '+' in filenames is often '%2B' in HTML URLs
+    # 2. Handle versioning: Filenames can have 'torch2.10' or 'torch210'
+    # 3. Handle platform: Use a wildcard for the platform part to be robust
+    
+    # We escape the dots and plus for regex, but also allow the encoded version
+    # The filename part usually looks like: {lib_name}-{version}+{cuda}torch{torch_ver}-{python}-{python}-{platform}.whl
+    
+    # Regex explanation:
+    # - Matches the package name (with underscores instead of hyphens)
+    # - Matches the version block and a '+' or '%2B'
+    # - Matches the cuda string (e.g. cu128)
+    # - Matches the torch string (e.g. torch210 or torch2.10)
+    # - Matches the python tags (e.g. -cp311-cp311-)
+    # - Wildcard for the platform tag and extension
+    
+    lib_name_fixed = lib_name.replace("-", "_")
+    pattern = rf'https://github\.com/[^"\s]+{lib_name_fixed}-[^"\s]+(?:\+|%2B){cuda}{torch_base}{v_major}\.?{v_minor}-{python_tag}-{python_tag}-[^"\s]+\.whl'
     
     matches = re.findall(pattern, html)
     if matches:
-        wheel_url = matches[0]
-       
+        return matches[0]
+
+    return None
+
+def install_flash_attn(pip_base, env, dry_run=False):
+    print("\n--- Installing flash-attn ---")
+    wheel_url = find_wheel_url("flash-attn", env)
+    
+    if wheel_url:
         print(f"  Found matching wheel: {wheel_url}")
         if dry_run:
             print(f"  [Dry Run] Would run: {' '.join(pip_base + ['install', wheel_url])}")
@@ -162,7 +183,7 @@ def install_flash_attn(pip_base, env, dry_run=False):
         else:
             return run_command(pip_base + ["install", wheel_url])
     else:
-        print(f"  Warning: No matching flash-attn wheel found for {cuda}, {torch_tag}, {python_tag} on {platform_tag}.")
+        print(f"  Warning: No matching flash-attn wheel found for {env['cuda']}, {env['torch']}, {env['python']} on {env['platform']}.")
         print("  Please consider switching to a recommended environment for flash-attn support.")
         return False
 
@@ -266,21 +287,21 @@ def install():
     
     errors_occurred = False
     for pkg in packages:
-        platform_tag = env['platform']
-        # Special case for packages that use different manylinux tags
-        if platform_tag.startswith("manylinux"):
-            platform_tag = pkg['linux_tag']
-            
-        wheel_name = f"{pkg['file']}-{pkg['version']}+{env['cuda']}{env['torch']}-{env['python']}-{env['python']}-{platform_tag}.whl"
-        url = f"https://github.com/PozzettiAndrea/cuda-wheels/releases/download/{pkg['tag']}/{wheel_name}"
-        
         print(f"Installing {pkg['name']}...")
-        if args.dry_run:
-            print(f"  [Dry Run] Would run: {' '.join(pip_base + ['install', url])}")
+        
+        wheel_url = find_wheel_url(pkg['name'], env)
+        
+        if wheel_url:
+            print(f"  Found matching wheel: {wheel_url}")
+            if args.dry_run:
+                print(f"  [Dry Run] Would run: {' '.join(pip_base + ['install', wheel_url])}")
+            else:
+                if not run_command(pip_base + ["install", wheel_url]):
+                    print(f"Warning: Failed to install {pkg['name']}.")
+                    errors_occurred = True
         else:
-            if not run_command(pip_base + ["install", url]):
-                print(f"Warning: Failed to install {pkg['name']}.")
-                errors_occurred = True
+            print(f"  Warning: No matching {pkg['name']} wheel found in the index.")
+            errors_occurred = True
 
     if errors_occurred:
         show_recommendations()

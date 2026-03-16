@@ -109,13 +109,15 @@ class SparseResBlock3d(nn.Module):
         if self.resample_mode == 'spatial2channel':
             h = self.conv1(h)
             if self.low_vram:
-                h.clear_neighbor_cache()
+                if hasattr(h, 'clear_neighbor_cache'):
+                    h.clear_neighbor_cache()
         h = self._updown(h, subdiv)
         x = self._updown(x, subdiv)
         if self.resample_mode == 'nearest':
             h = self.conv1(h)
             if self.low_vram:
-                h.clear_neighbor_cache()
+                if hasattr(h, 'clear_neighbor_cache'):
+                    h.clear_neighbor_cache()
         if self.low_vram:
             h = h.replace(chunked_apply(self.norm2, h.feats, self.chunk_size))
             h = h.replace(chunked_apply(F.silu, h.feats, self.chunk_size))
@@ -171,7 +173,8 @@ class SparseResBlockDownsample3d(nn.Module):
             h = h.replace(F.silu(h.feats))
         h = self.conv1(h)
         if self.low_vram:
-            h.clear_neighbor_cache()
+            if hasattr(h, 'clear_neighbor_cache'):
+                h.clear_neighbor_cache()
             torch.cuda.empty_cache()
         if self.low_vram:
             h = h.replace(chunked_apply(self.norm2, h.feats, self.chunk_size))
@@ -236,7 +239,8 @@ class SparseResBlockUpsample3d(nn.Module):
         h = self.updown(h, subdiv_binarized)
         h = self.conv1(h)
         if self.low_vram:
-            h.clear_neighbor_cache()
+            if hasattr(h, 'clear_neighbor_cache'):
+                h.clear_neighbor_cache()
             torch.cuda.empty_cache()
         if self.low_vram:
             h = h.replace(chunked_apply(self.norm2, h.feats, self.chunk_size))
@@ -296,7 +300,8 @@ class SparseResBlockS2C3d(nn.Module):
             h = h.replace(F.silu(h.feats))
         h = self.conv1(h)
         if self.low_vram:
-            h.clear_neighbor_cache()
+            if hasattr(h, 'clear_neighbor_cache'):
+                h.clear_neighbor_cache()
             torch.cuda.empty_cache()
         h = self.updown(h)
         if self.low_vram:
@@ -360,7 +365,8 @@ class SparseResBlockC2S3d(nn.Module):
             h = h.replace(F.silu(h.feats))
         h = self.conv1(h)
         if self.low_vram:
-            h.clear_neighbor_cache()
+            if hasattr(h, 'clear_neighbor_cache'):
+                h.clear_neighbor_cache()
             torch.cuda.empty_cache()
         subdiv_binarized = subdiv.replace(subdiv.feats > 0) if subdiv is not None else None
         h = self.updown(h, subdiv_binarized)
@@ -414,7 +420,8 @@ class SparseConvNeXtBlock3d(nn.Module):
     def _forward(self, x: sp.SparseTensor) -> sp.SparseTensor:
         h = self.conv(x)
         if self.low_vram:
-            h.clear_neighbor_cache()
+            if hasattr(h, 'clear_neighbor_cache'):
+                h.clear_neighbor_cache()
         if self.low_vram:
             h = h.replace(chunked_apply(self.norm, h.feats, self.chunk_size))
             h = h.replace(chunked_apply(self.mlp, h.feats, self.chunk_size))
@@ -898,12 +905,14 @@ class SparseUnetVaeDecoder(nn.Module):
         # Use clear_neighbor_cache() to free VRAM neighbor maps (they're useless for tiling)
         # while PRESERVING essential structural caches like 'subdivision'.
         x = x.cpu()
-        x.clear_neighbor_cache()
+        if hasattr(x, 'clear_neighbor_cache'):
+            x.clear_neighbor_cache()
         if guide_subs is not None:
             guide_subs = [g.cpu() if g is not None else None for g in guide_subs]
             for g in guide_subs:
                 if g is not None:
-                    g.clear_neighbor_cache()
+                    if hasattr(g, 'clear_neighbor_cache'):
+                        g.clear_neighbor_cache()
                 
         coords = x.coords
         x_feats_cpu = x.feats

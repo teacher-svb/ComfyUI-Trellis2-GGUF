@@ -26,7 +26,7 @@ class SLatShapeVisMixin(SLatVisMixin):
 
     @torch.no_grad()
     def visualize_sample(self, x_0: Union[SparseTensor, dict]):
-        x_0 = x_0 if isinstance(x_0, SparseTensor) else x_0['x_0']
+        x_0 = x_0 if hasattr(x_0, 'coords') else x_0['x_0']
         reps = self.decode_latent(x_0.cuda())
         
         # build camera

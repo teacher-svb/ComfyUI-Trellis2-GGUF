@@ -205,7 +205,7 @@ class VarLenTensor:
                 other = other[self.batch_boardcast_map]
             except:
                 pass
-        if isinstance(other, VarLenTensor):
+        if hasattr(other, 'feats'):
             other = other.feats
         new_feats = op(self.feats, other)
         new_tensor = self.replace(new_feats)
@@ -721,7 +721,7 @@ class SparseTensor(VarLenTensor):
                 other = other[self.batch_boardcast_map]
             except:
                 pass
-        if isinstance(other, VarLenTensor):
+        if hasattr(other, 'feats'):
             other = other.feats
         new_feats = op(self.feats, other)
         new_tensor = self.replace(new_feats)
