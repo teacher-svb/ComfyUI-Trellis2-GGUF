@@ -986,7 +986,20 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             tex_slat (SparseTensor): The structured latent for texture.
             resolution (int): The resolution of the output.
         """
+        def strip_ggml_sparse(st):
+            if st is None: return None
+            feats = torch.empty(st.feats.shape, dtype=st.feats.dtype, device=st.feats.device).copy_(st.feats)
+            coords = torch.empty(st.coords.shape, dtype=st.coords.dtype, device=st.coords.device).copy_(st.coords)
+            return st.replace(feats=feats, coords=coords)
+
+        shape_slat = strip_ggml_sparse(shape_slat)
+        tex_slat = strip_ggml_sparse(tex_slat)
+
         meshes, subs = self.decode_shape_slat(shape_slat, resolution, use_tiled=use_tiled)
+        
+        if subs is not None:
+            subs = [strip_ggml_sparse(sub) for sub in subs]
+
         if self.low_vram:
             self._cleanup_cuda()                                                         
             
@@ -1016,11 +1029,11 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             for m, v in zip(meshes, tex_voxels):
                 out_mesh.append(
                     MeshWithVoxel(
-                        m.vertices, m.faces,
+                        m.vertices.float(), m.faces.int(),
                         origin = [-0.5, -0.5, -0.5],
                         voxel_size = 1 / resolution,
                         coords = v.coords[:, 1:],
-                        attrs = v.feats,
+                        attrs = v.feats.float(),
                         voxel_shape = torch.Size([*v.shape, *v.spatial_shape]),
                         layout=self.pbr_attr_layout
                     )
@@ -2309,7 +2322,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         bake_on_vertices = False,
         use_custom_normals = False,
         uv_unwrap_method = 'Xatlas',
-        mesh_cluster_threshold_cone_half_angle_rad = 60.0
+        mesh_cluster_threshold_cone_half_angle_rad = 60.0,
+        inpainting = 'telea'
     ):        
         vertices = mesh.vertices
         faces = mesh.faces
@@ -2529,11 +2543,16 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         alpha = np.clip(attrs[..., self.pbr_attr_layout['alpha']].cpu().numpy() * 255, 0, 255).astype(np.uint8)
         
         # extend
+        if inpainting == 'telea':
+            inpainting_algo = cv2.INPAINT_TELEA
+        else:
+            inpainting_algo = cv2.INPAINT_NS
+            
         mask = (~mask).astype(np.uint8)
-        base_color = cv2.inpaint(base_color, mask, 3, cv2.INPAINT_TELEA)
-        metallic = cv2.inpaint(metallic, mask, 1, cv2.INPAINT_TELEA)[..., None]
-        roughness = cv2.inpaint(roughness, mask, 1, cv2.INPAINT_TELEA)[..., None]
-        alpha = cv2.inpaint(alpha, mask, 1, cv2.INPAINT_TELEA)[..., None]
+        base_color = cv2.inpaint(base_color, mask, 3, inpainting_algo)
+        metallic = cv2.inpaint(metallic, mask, 1, inpainting_algo)[..., None]
+        roughness = cv2.inpaint(roughness, mask, 1, inpainting_algo)[..., None]
+        alpha = cv2.inpaint(alpha, mask, 1, inpainting_algo)[..., None]
         
         baseColorTexture = Image.fromarray(np.concatenate([base_color, alpha], axis=-1))
         metallicRoughnessTexture = Image.fromarray(np.concatenate([np.zeros_like(metallic), roughness, metallic], axis=-1))
@@ -2594,6 +2613,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         decoder_tile_size: int = 120,
         decoder_overlap: int = 48,
         sampler: str = None,
+        inpainting: str = 'telea',
     ):
         
         self.use_tiled_decoder_for_texture = use_tiled_decoder
@@ -2657,7 +2677,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         pbr_voxel = self.decode_tex_slat(tex_slat)
         torch.cuda.empty_cache()
         
-        out_mesh, baseColorTexture, metallicRoughnessTexture = self.postprocess_mesh(mesh, pbr_voxel, resolution, texture_size, texture_alpha_mode, double_side_material, bake_on_vertices, use_custom_normals, uv_unwrap_method, mesh_cluster_threshold_cone_half_angle_rad)
+        out_mesh, baseColorTexture, metallicRoughnessTexture = self.postprocess_mesh(mesh, pbr_voxel, resolution, texture_size, texture_alpha_mode, double_side_material, bake_on_vertices, use_custom_normals, uv_unwrap_method, mesh_cluster_threshold_cone_half_angle_rad, inpainting)
         return out_mesh, baseColorTexture, metallicRoughnessTexture
         
     @torch.no_grad()
@@ -2687,6 +2707,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         decoder_tile_size: int = 120,
         decoder_overlap: int = 48,
         sampler: str = None,
+        inpainting: str = 'telea',
     ):
         
         self.use_tiled_decoder_for_texture = use_tiled_decoder
@@ -2770,7 +2791,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         pbr_voxel = self.decode_tex_slat(tex_slat)
         torch.cuda.empty_cache()
         
-        out_mesh, baseColorTexture, metallicRoughnessTexture = self.postprocess_mesh(mesh, pbr_voxel, resolution, texture_size, texture_alpha_mode, double_side_material, bake_on_vertices, use_custom_normals, uv_unwrap_method, mesh_cluster_threshold_cone_half_angle_rad)
+        out_mesh, baseColorTexture, metallicRoughnessTexture = self.postprocess_mesh(mesh, pbr_voxel, resolution, texture_size, texture_alpha_mode, double_side_material, bake_on_vertices, use_custom_normals, uv_unwrap_method, mesh_cluster_threshold_cone_half_angle_rad, inpainting)
         return out_mesh, baseColorTexture, metallicRoughnessTexture        
     
     def get_coords_from_trimesh(self, mesh, resolution):
