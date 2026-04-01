@@ -159,7 +159,46 @@ def ensure_model_files(
     Returns:
         dict mapping model_key -> resolved (config_path, model_path, is_gguf)
     """
+    import sys
+    import logging
+    import huggingface_hub.utils
+    import huggingface_hub.file_download
     from huggingface_hub import hf_hub_download
+
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    import huggingface_hub.constants
+    huggingface_hub.constants.HF_HUB_DISABLE_PROGRESS_BARS = False
+    huggingface_hub.constants.HF_HUB_ENABLE_HF_TRANSFER = False
+    class ForceTqdm:
+        def __init__(self, *args, **kwargs):
+            self.total = kwargs.get('total', 0)
+            if not self.total and kwargs.get('_tqdm_bar'):
+                self.total = getattr(kwargs['_tqdm_bar'], 'total', 0)
+            self.n = kwargs.get('initial', 0)
+            self.desc = kwargs.get('desc', 'Download')
+        def update(self, n=1):
+            self.n += n
+            import sys
+            if self.total and self.total > 0:
+                pct = int((self.n / self.total) * 100)
+                sys.stdout.write(f"\x1b[2K\r[{self.desc}] {pct}% ({self.n//1048576}MB / {self.total//1048576}MB)")
+            else:
+                mb = self.n // 1048576
+                sys.stdout.write(f"\x1b[2K\r[{self.desc}] {mb}MB downloaded...")
+            sys.stdout.flush()
+        def __enter__(self): return self
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            import sys
+            sys.stdout.write(f"\x1b[2K\r[{self.desc}] Completed!\n")
+            sys.stdout.flush()
+        def close(self): pass
+            
+    def my_get_progress_bar_context(*args, **kwargs):
+        return ForceTqdm(**kwargs)
+        
+    import huggingface_hub.file_download
+    huggingface_hub.file_download._get_progress_bar_context = my_get_progress_bar_context
 
     root = get_models_dir()
     os.makedirs(root, exist_ok=True)

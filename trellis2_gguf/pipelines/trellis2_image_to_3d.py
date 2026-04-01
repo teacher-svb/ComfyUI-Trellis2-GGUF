@@ -1729,7 +1729,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             resolution=flow_model_lr.resolution,
         )
         active_sampler_lr = self._get_sampler(sampler, default_sampler_lr)
-        
+        sampler_params_combined = {**self.shape_slat_sampler_params, **sampler_params}
         slat = active_sampler_lr.sample(
             flow_model_lr,
             noise,
