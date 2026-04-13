@@ -609,6 +609,16 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         num_samples: int = 1,
         sampler_params: dict = {},
         sampler: str = None,
+        fill_holes: bool = True,
+        hole_structure: int = 1,
+        hole_iterations: int = 1,
+        hole_fill_algorithm: str = "remove_small_holes",
+        keep_only_shell: bool = True,
+        verbose: bool = True,
+        dino_lock: float = 0.0,
+        dino_substeps: int = 4,
+        dino_foundation_cap: float = 0.92,
+        **kwargs,
     ) -> torch.Tensor:
         """
         Sample sparse structures with the given conditioning.
@@ -669,6 +679,11 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         coords: torch.Tensor,
         sampler_params: dict = {},
         sampler: str = None,
+        verbose: bool = True,
+        dino_lock: float = 0.0,
+        dino_substeps: int = 4,
+        dino_foundation_cap: float = 0.92,
+        **kwargs,
     ) -> SparseTensor:
         """
         Sample structured latent with the given conditioning.
@@ -725,7 +740,13 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         coords: torch.Tensor,
         sampler_params: dict = {},
         max_num_tokens: int = 49152,
+        sparse_structure_resolution: int = 32,
         sampler: str = None,
+        verbose: bool = False,
+        dino_lock: float = 0.0,
+        dino_substeps: int = 4,
+        dino_foundation_cap: float = 0.92,
+        **kwargs,
     ) -> SparseTensor:
         """
         Sample structured latent with the given conditioning.
@@ -880,6 +901,11 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         shape_slat: SparseTensor,
         sampler_params: dict = {},
         sampler: str = None,
+        verbose: bool = False,
+        dino_lock: float = 0.0,
+        dino_substeps: int = 4,
+        dino_foundation_cap: float = 0.92,
+        **kwargs,
     ) -> SparseTensor:
         """
         Sample structured latent with the given conditioning.
@@ -1062,6 +1088,15 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         sparse_structure_sampler: str = None,
         shape_sampler: str = None,
         tex_sampler: str = None,
+        verbose: bool = False,
+        fill_holes: bool = True,
+        hole_iterations: int = 1,
+        dino_lock: float = 0.00,
+        dino_substeps: int = 4,
+        hole_fill_algorithm: str = "remove_small_holes",
+        dino_foundation_cap: float = 0.92,
+        keep_only_shell: bool = True,
+        **kwargs,
     ) -> List[MeshWithVoxel]:
         """
         Run the pipeline.
@@ -1367,6 +1402,15 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         sparse_structure_sampler: str = None,
         shape_sampler: str = None,
         tex_sampler: str = None,
+        verbose: bool = False,
+        fill_holes: bool = True,
+        hole_iterations: int = 1,
+        dino_lock: float = 0.00,
+        dino_substeps: int = 4,
+        hole_fill_algorithm: str = "remove_small_holes",
+        dino_foundation_cap: float = 0.92,
+        keep_only_shell: bool = True,
+        **kwargs,
     ) -> List[MeshWithVoxel]:
         """
         Run the pipeline with named multi-view images and spatial blending.
@@ -1572,6 +1616,16 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         front_axis: str = 'z',
         blend_temperature: float = 2.0,
         sampler: str = None,
+        fill_holes: bool = True,
+        hole_structure: int = 1,
+        hole_iterations: int = 1,
+        hole_fill_algorithm: str = "remove_small_holes",
+        keep_only_shell: bool = True,
+        verbose: bool = True,
+        dino_lock: float = 0.0,
+        dino_substeps: int = 4,
+        dino_foundation_cap: float = 0.92,
+        **kwargs,
     ) -> torch.Tensor:
         """
         Sample sparse structures with multi-view blending.
@@ -2622,6 +2676,11 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         decoder_overlap: int = 48,
         sampler: str = None,
         inpainting: str = 'telea',
+        verbose: bool = False,
+        dino_lock: float = 0.0,
+        dino_substeps: int = 4,
+        dino_foundation_cap: float = 0.92,
+        **kwargs,
     ):
         
         self.use_tiled_decoder_for_texture = use_tiled_decoder
@@ -2716,6 +2775,11 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         decoder_overlap: int = 48,
         sampler: str = None,
         inpainting: str = 'telea',
+        verbose: bool = False,
+        dino_lock: float = 0.0,
+        dino_substeps: int = 4,
+        dino_foundation_cap: float = 0.92,
+        **kwargs,
     ):
         
         self.use_tiled_decoder_for_texture = use_tiled_decoder
@@ -2843,6 +2907,11 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         upsample_tile_size: int = 16,
         upsample_overlap: int = 2,
         sampler: str = None,
+        verbose: bool = False,
+        dino_lock: float = 0.0,
+        dino_substeps: int = 4,
+        dino_foundation_cap: float = 0.92,
+        **kwargs,
     ) -> SparseTensor:
         # Upsample       
         self.load_shape_slat_decoder()
@@ -2952,6 +3021,11 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         upsample_tile_size: int = 16,
         upsample_overlap: int = 2,
         sampler: str = None,
+        verbose: bool = False,
+        dino_lock: float = 0.0,
+        dino_substeps: int = 4,
+        dino_foundation_cap: float = 0.92,
+        **kwargs,
     ):
         self.use_tiled_decoder_for_texture = use_tiled_decoder
         self.tiled_decoder_size = decoder_tile_size
