@@ -1394,6 +1394,7 @@ class Trellis2_GGUFMeshWithVoxelAdvancedGenerator:
         shape_guidance_interval_start,
         shape_guidance_interval_end,
         texture_guidance_interval_start,
+        texture_guidance_interval_end,
         use_tiled_decoder,
         sparse_structure_sampler="euler",
         shape_sampler="euler",
@@ -1466,6 +1467,7 @@ class Trellis2_GGUFMeshWithVoxelMultiViewGenerator:
                 "shape_guidance_interval_end": ("FLOAT",{"default":1.00,"min":0.00,"max":1.00,"step":0.01}),
                 "texture_guidance_interval_start": ("FLOAT",{"default":0.00,"min":0.00,"max":1.00,"step":0.01}),
                 "texture_guidance_interval_end": ("FLOAT",{"default":0.90,"min":0.00,"max":1.00,"step":0.01}),
+                "use_tiled_decoder": ("BOOLEAN", {"default":True}),
                 "front_axis": (["z", "x"], {"default": "z"}),
                 "blend_temperature": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1}),
             },
@@ -1558,7 +1560,10 @@ class Trellis2_GGUFMeshWithVoxelMultiViewGenerator:
             pbar=pbar,
             front_axis=front_axis,
             blend_temperature=blend_temperature,
-            sampler=sampler
+            sampler=None,
+            sparse_structure_sampler=sparse_structure_sampler,
+            shape_sampler=shape_sampler,
+            tex_sampler=texture_sampler
         )[0]         
         
         vertices = mesh.vertices.cuda()

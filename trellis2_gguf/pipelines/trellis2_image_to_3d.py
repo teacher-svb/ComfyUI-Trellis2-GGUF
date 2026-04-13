@@ -1059,6 +1059,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         use_tiled: bool = True,
         pbar = None,
         sampler: str = None,
+        sparse_structure_sampler: str = None,
+        shape_sampler: str = None,
+        tex_sampler: str = None,
     ) -> List[MeshWithVoxel]:
         """
         Run the pipeline.
@@ -1124,7 +1127,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         coords = self.sample_sparse_structure(
             cond_512, sparse_structure_resolution,
             num_samples, sparse_structure_sampler_params,
-            sampler=sampler
+            sampler=sparse_structure_sampler or sampler
         )
         
         if pbar is not None:
@@ -1140,7 +1143,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             shape_slat = self.sample_shape_slat(
                 cond_512, self.models['shape_slat_flow_model_512'],
                 coords, shape_slat_sampler_params,
-                sampler=sampler
+                sampler=shape_sampler or sampler
             )
             
             if pbar is not None:
@@ -1155,7 +1158,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 tex_slat = self.sample_tex_slat(
                     cond_512, self.models['tex_slat_flow_model_512'],
                     shape_slat, tex_slat_sampler_params,
-                    sampler=sampler
+                    sampler=tex_sampler or sampler
                 )
                 
                 if pbar is not None:
@@ -1171,7 +1174,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             shape_slat = self.sample_shape_slat(
                 cond_1024, self.models['shape_slat_flow_model_1024'],
                 coords, shape_slat_sampler_params,
-                sampler=sampler
+                sampler=shape_sampler or sampler
             )
             
             if pbar is not None:
@@ -1185,7 +1188,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 self.load_tex_slat_flow_model_1024()
                 tex_slat = self.sample_tex_slat(
                     cond_1024, self.models['tex_slat_flow_model_1024'],
-                    shape_slat, tex_slat_sampler_params
+                    shape_slat, tex_slat_sampler_params, sampler=tex_sampler or sampler
                 )
                 
                 if pbar is not None:
@@ -1204,7 +1207,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 512, 1024,
                 coords, shape_slat_sampler_params,
                 max_num_tokens,
-                sampler=sampler
+                sampler=shape_sampler or sampler
             )
             
             if pbar is not None:
@@ -1219,7 +1222,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 self.load_tex_slat_flow_model_1024()
                 tex_slat = self.sample_tex_slat(
                     cond_1024, self.models['tex_slat_flow_model_1024'],
-                    shape_slat, tex_slat_sampler_params
+                    shape_slat, tex_slat_sampler_params, sampler=tex_sampler or sampler
                 )
                 
             if pbar is not None:
@@ -1236,7 +1239,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 512, 2048,
                 coords, shape_slat_sampler_params,
                 max_num_tokens,
-                sampler=sampler
+                sampler=shape_sampler or sampler
             )
             
             if pbar is not None:
@@ -1251,7 +1254,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 self.load_tex_slat_flow_model_1024()
                 tex_slat = self.sample_tex_slat(
                     cond_1024, self.models['tex_slat_flow_model_1024'],
-                    shape_slat, tex_slat_sampler_params
+                    shape_slat, tex_slat_sampler_params, sampler=tex_sampler or sampler
                 )
                 
                 if pbar is not None:
@@ -1268,7 +1271,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 512, 4096,
                 coords, shape_slat_sampler_params,
                 max_num_tokens,
-                sampler=sampler
+                sampler=shape_sampler or sampler
             )
             
             if pbar is not None:
@@ -1283,7 +1286,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 self.load_tex_slat_flow_model_1024()
                 tex_slat = self.sample_tex_slat(
                     cond_1024, self.models['tex_slat_flow_model_1024'],
-                    shape_slat, tex_slat_sampler_params
+                    shape_slat, tex_slat_sampler_params, sampler=tex_sampler or sampler
                 )
                         
                 if pbar is not None:
@@ -1300,7 +1303,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 512, 1536,
                 coords, shape_slat_sampler_params,
                 max_num_tokens,
-                sampler=sampler
+                sampler=shape_sampler or sampler
             )
             
             if pbar is not None:
@@ -1315,7 +1318,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 self.load_tex_slat_flow_model_1024()
                 tex_slat = self.sample_tex_slat(
                     cond_1024, self.models['tex_slat_flow_model_1024'],
-                    shape_slat, tex_slat_sampler_params
+                    shape_slat, tex_slat_sampler_params, sampler=tex_sampler or sampler
                 )
                 
                 if pbar is not None:
@@ -1361,6 +1364,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         front_axis: str = 'z',
         blend_temperature: float = 2.0,
         sampler: str = None,
+        sparse_structure_sampler: str = None,
+        shape_sampler: str = None,
+        tex_sampler: str = None,
     ) -> List[MeshWithVoxel]:
         """
         Run the pipeline with named multi-view images and spatial blending.
@@ -1426,7 +1432,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             sampler_params=sparse_structure_sampler_params,
             front_axis=front_axis,
             blend_temperature=blend_temperature,
-            sampler=sampler,
+            sampler=sparse_structure_sampler or sampler,
         )
         
         if not self.keep_models_loaded:
@@ -1450,7 +1456,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 max_num_tokens,
                 front_axis=front_axis,
                 blend_temperature=blend_temperature,
-                sampler=sampler
+                sampler=shape_sampler or sampler
             )
             res = 1024
             
@@ -1469,7 +1475,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 max_num_tokens,
                 front_axis=front_axis,
                 blend_temperature=blend_temperature,
-                sampler=sampler
+                sampler=shape_sampler or sampler
             )
             res = 1536
              
@@ -1485,7 +1491,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                  coords, shape_slat_sampler_params,
                  front_axis=front_axis,
                  blend_temperature=blend_temperature,
-                 sampler=sampler
+                 sampler=shape_sampler or sampler
              )
              res = 512
              if not self.keep_models_loaded:
@@ -1499,6 +1505,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                  coords, shape_slat_sampler_params,
                  front_axis=front_axis,
                  blend_temperature=blend_temperature,
+                 sampler=shape_sampler or sampler
              )
              res = 1024
              if not self.keep_models_loaded:
@@ -1528,6 +1535,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 sampler_params=tex_slat_sampler_params,
                 front_axis=front_axis,
                 blend_temperature=blend_temperature,
+                sampler=tex_sampler or sampler
             )  
              
             if not self.keep_models_loaded:
@@ -2667,7 +2675,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             
             tex_slat = self.sample_tex_slat(
                 cond, tex_model,
-                shape_slat, tex_slat_sampler_params
+                shape_slat, tex_slat_sampler_params, sampler=tex_sampler or sampler
             )
             
             if not self.keep_models_loaded:
@@ -3030,7 +3038,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 self.load_tex_slat_flow_model_1024()
                 tex_slat = self.sample_tex_slat(
                     cond, self.models['tex_slat_flow_model_1024'],
-                    shape_slat, tex_slat_sampler_params
+                    shape_slat, tex_slat_sampler_params, sampler=tex_sampler or sampler
                 )
             
             if not self.keep_models_loaded:
@@ -3060,7 +3068,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 self.load_tex_slat_flow_model_1024()
                 tex_slat = self.sample_tex_slat(
                     cond, self.models['tex_slat_flow_model_1024'],
-                    shape_slat, tex_slat_sampler_params
+                    shape_slat, tex_slat_sampler_params, sampler=tex_sampler or sampler
                 )
             
             if not self.keep_models_loaded:
